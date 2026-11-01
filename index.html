@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Privacy Score: ¿qué hace una web con tus datos?</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#f6f7f9;--card:#fff;--text:#14181f;--muted:#5d6676;--line:#e3e6ec;--accent:#2f5bea;
+--A:#1a9b55;--B:#7ab51d;--C:#e0a800;--D:#e8741c;--F:#d93636;}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1218;--card:#181c25;--text:#eceff5;--muted:#9aa3b5;--line:#2a3040;--accent:#7b9bff;}}
+:root[data-theme="dark"]{--bg:#0f1218;--card:#181c25;--text:#eceff5;--muted:#9aa3b5;--line:#2a3040;--accent:#7b9bff;}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:680px;margin:0 auto;padding:40px 18px 60px}
+h1{font-size:clamp(26px,5vw,36px);margin:0 0 8px;letter-spacing:-.02em}
+.sub{color:var(--muted);margin:0 0 24px}
+.box{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+input[type=url],textarea{flex:1;min-width:0;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text);font:inherit}
+textarea{width:100%;min-height:110px;margin-top:10px;resize:vertical}
+button{padding:12px 20px;border:0;border-radius:10px;background:var(--accent);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button:disabled{opacity:.6;cursor:wait}
+details{margin-top:12px;color:var(--muted);font-size:14px}
+summary{cursor:pointer}
+#out{margin-top:24px}
+.score{display:flex;gap:18px;align-items:center}
+.grade{flex:none;width:92px;height:92px;border-radius:20px;display:grid;place-items:center;font-size:56px;font-weight:800;color:#fff}
+.g-A{background:var(--A)}.g-B{background:var(--B)}.g-C{background:var(--C)}.g-D{background:var(--D)}.g-F{background:var(--F)}
+.score h2{margin:0;font-size:20px;word-break:break-all}
+.score p{margin:4px 0 0;color:var(--muted)}
+.pt{margin-top:14px;padding:14px 16px;border:1px solid var(--line);border-radius:12px;border-left:5px solid var(--muted)}
+.pt.good{border-left-color:var(--A)}.pt.mid{border-left-color:var(--C)}.pt.bad{border-left-color:var(--F)}
+.pt h3{margin:0 0 4px;font-size:16px}
+.pt .v{font-weight:700}
+.pt p{margin:0;color:var(--muted);font-size:15px}
+.note{margin-top:16px;font-size:13px;color:var(--muted)}
+.err{color:var(--F)}
+</style>
+</head>
+<body>
+<main>
+  <h1>🔍 Privacy Score</h1>
+  <p class="sub">Pega la URL de cualquier web y obtén una nota de A a F sobre cómo trata tus datos.</p>
+  <div class="box">
+    <div class="row">
+      <input id="url" type="url" placeholder="https://ejemplo.com" autocomplete="off">
+      <button id="go">Analizar</button>
+    </div>
+    
+  </div>
+  <div id="out" aria-live="polite"></div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const out=$('out'),btn=$('go');
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function render(d,url){
+  const g=['A','B','C','D','F'].includes(d.nota)?d.nota:'C';
+  const pts=(d.puntos||[]).slice(0,3).map(p=>`<div class="pt ${['good','mid','bad'].includes(p.nivel)?p.nivel:'mid'}"><h3>${esc(p.titulo)} <span class="v">· ${esc(p.veredicto)}</span></h3><p>${esc(p.detalle)}</p></div>`).join('');
+  const src=d.politica_url?`Política analizada: <a href="${esc(d.politica_url)}" target="_blank" rel="noopener noreferrer">${esc(d.politica_url)}</a>. `:'No se encontró la política de la web. ';
+  out.innerHTML=`<div class="box"><div class="score"><div class="grade g-${g}">${g}</div><div><h2>${esc(d.sitio||url)}</h2><p>${esc(d.resumen)}</p></div></div>${pts}<p class="note">${src}Confianza: <b>${esc(d.confianza||'media')}</b>. Valoración automática orientativa, no asesoría legal.</p></div>`;
+}
+btn.onclick=async()=>{
+  let url=$('url').value.trim();
+  if(!url){out.innerHTML='<p class="err">Introduce una URL.</p>';return}
+  if(!/^https?:\/\//i.test(url))url='https://'+url;
+  btn.disabled=true;btn.textContent='Analizando…';
+  out.innerHTML='<p class="sub">Buscando y leyendo la política de privacidad…</p>';
+  try{
+    const r=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error||'Error');
+    render(d,url);
+  }catch(e){out.innerHTML='<p class="err">'+esc(e.message||'No se pudo completar el análisis')+'</p>'}
+  finally{btn.disabled=false;btn.textContent='Analizar'}
+};
+$('url').addEventListener('keydown',e=>{if(e.key==='Enter')btn.click()});
+</script>
+</body>
+</html>

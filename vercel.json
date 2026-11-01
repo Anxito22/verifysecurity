@@ -1,0 +1,1 @@
+{ "outputDirectory": "public", "functions": { "api/analyze.js": { "maxDuration": 60 } } }
