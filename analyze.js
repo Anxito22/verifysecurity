@@ -2,7 +2,7 @@
 const dns = require('dns').promises;
 const net = require('net');
 
-const MODEL = process.env.GEMINI_MODEL || 'gemini-flash-lite-latest'; // modelo con capa gratuita
+const MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile'; // modelo en la capa gratuita de Groq
 const hits = new Map(); // límite simple por IP (best-effort en serverless)
 
 function rateLimited(ip) {
@@ -87,7 +87,7 @@ module.exports = async (req, res) => {
       try {
         const p = await safeGet(c);
         const t = toText(p.html);
-        if (t.length > 1500) { policyText = t.slice(0, 40000); policyUrl = p.finalUrl; break; }
+        if (t.length > 1500) { policyText = t.slice(0, 14000); policyUrl = p.finalUrl; break; }
       } catch {}
     }
     if (!policyText) policyUrl = null;
@@ -104,22 +104,25 @@ Responde SOLO con JSON válido, sin markdown:
 {"titulo":"¿Es fácil borrar tu cuenta y tus datos?","veredicto":"...","nivel":"...","detalle":"..."}]}
 Criterio: A muy respetuosa; B buena con reparos; C práctica habitual del sector; D invasiva; F muy invasiva u opaca. No inventes: si no consta, "No claro".`;
 
-    const ar = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
+    const ar = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       signal: AbortSignal.timeout(50000),
       headers: {
         'content-type': 'application/json',
-        'x-goog-api-key': process.env.GEMINI_API_KEY
+        'authorization': 'Bearer ' + process.env.GROQ_API_KEY
       },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 2000, temperature: 0.2 }
+        model: MODEL,
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: 'json_object' },
+        temperature: 0.2,
+        max_tokens: 900
       })
     });
     if (ar.status === 429) throw new Error('Se alcanzó el límite gratuito del servicio. Inténtalo en unos minutos.');
     if (!ar.ok) throw new Error('Error del servicio de análisis (' + ar.status + ').');
     const data = await ar.json();
-    const txt = (data.candidates?.[0]?.content?.parts || []).map(c => c.text || '').join('');
+    const txt = data.choices?.[0]?.message?.content || '';
     const out = JSON.parse(txt.match(/\{[\s\S]*\}/)[0]);
     out.politica_url = policyUrl;
     res.status(200).json(out);
